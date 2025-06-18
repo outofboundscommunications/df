@@ -1,0 +1,156 @@
+<script> 
+var google_tag_params = {
+ecomm_prodid:[{% for line in checkout.line_items %}'shopify_US_{{ line.product_id }}_{{ line.variant_id }}'{% unless forloop.last %},{% endunless %}{% endfor %}],
+ecomm_variantid:[{% for line in checkout.line_items %}'{{ line.variant_id }}'{% unless forloop.last %},{% endunless %}{% endfor %}],
+ecomm_pname:  [{% for line in checkout.line_items %}'{{ line.title }}'{% unless forloop.last %},{% endunless %}{% endfor %}],
+ecomm_pvalue: [{% for line in checkout.line_items %}{{ line.price| money_without_currency | remove: ","}}{% unless forloop.last %},{% endunless %}{% endfor %}],  
+ecomm_pquan: [{% for line in checkout.line_items %}{{ line.quantity | json}}{% unless forloop.last %},{% endunless %}{% endfor %}],  
+ecomm_pagetype: 'checkout',
+user_id: '{{ customer.id }}',
+ecomm_totalvalue: '{{ total_price | money_without_currency | remove: "," }}'
+};
+
+__DL__ = {
+    dynamicCart: true,  // if cart is dynamic (meaning no refresh on cart add) set to true
+    debug: false, // if true, console messages will be displayed
+    cart: null,
+    wishlist: null,
+    removeCart: null
+}; 
+   
+/** 
+* DATALAYER Variable
+* Checkout & Transaction Data */
+
+__DL__products = [];
+
+    __DL__products = {
+     {% for discount in checkout.discounts %}
+      'coupon' : {{discount.code | json}},
+      'discount'  : {{discount.amount | money_without_currency | json}},
+      {% endfor %}  
+     'value' : {{ checkout.total_price | money_without_currency | remove: "," | json }},
+     'tax' : {{ checkout.tax_price | money_without_currency | remove: "," | json }}, 
+     'shipping' : {{ checkout.shipping_price | money_without_currency | remove: "," | json }},
+     'value' : {{ checkout.total_price | money_without_currency | remove: "," | json }},
+     'currency': '{{ shop.currency }}',
+      'items':[{% for line_item in checkout.line_items %}{
+       'item_id' : {% if line_item.sku != blank %}{{line_item.sku | json}}{% else %}{{line_item.product_id | json}}{% endif %},
+        'variant_id' : {% if line_item.variant.id !=  blank %}{{line_item.variant.id | json}}{% else %}""{% endif %},
+        'item_name' : {% if  line_item.title !=  blank %}{{ line_item.title | json }}{% else %}""{% endif %},
+        'item_category' : {% if  line_item.product.type !=  blank %}{{line_item.product.type | json}}{% else %}""{% endif %} ,
+        'item_brand' : {% if  line_item.vendor !=  blank %}{{line_item.vendor | json}}{% else %}'{{shop.name | json}}'{% endif %},
+        'price' : {% if   line_item.price !=  blank %}{{ line_item.price | money_without_currency | remove: "," | json}}{% else %}""{% endif %},
+        'image_url' : {% if line_item.product.featured_image.src != blank %}"https:{{line_item.product.featured_image.src | img_url:''}}"{% else %}""{% endif %},
+        'inventory' : {% if line_item.variant.inventory_quantity != blank %}{{line_item.variant.inventory_quantity | json}}{% else %}""{% endif %} ,
+        'currency' : {% if shop.currency != blank %}{{shop.currency | json}}{% else %}"USD"{% endif %},
+        'quantity' : {% if  line_item.quantity !=  blank %}{{ line_item.quantity | json}}{% else %}1{% endif %}, 
+        'product_url'  : {% if shop.secure_url != blank & line_item.product.url!=blank %}'{{shop.secure_url}}{{line_item.product.url}}'{% else %}""{% endif %},        
+      },
+    {% endfor %}]
+    } 
+        
+    transactionData = {
+      'transactionNumber'      : {{checkout.order_id | json}},
+      'transactionId'          : {{checkout.order_number | json}},
+      'transactionAffiliation' : {{shop.name | json}},
+      'transactionTotal'       : {{checkout.total_price | money_without_currency| remove: "," | json}},
+      'transactionTax'         : {{checkout.tax_price | money_without_currency| remove: "," | json}},
+      'transactionShipping'    : {{checkout.shipping_price | money_without_currency| remove: "," | json}},
+      'transactionSubtotal'    : {{checkout.subtotal_price | money_without_currency| remove: "," | json}},
+      {% for discount in checkout.discounts %}
+      'promoCode' : {{discount.code | json}},
+      'discount'  : {{discount.amount | money_without_currency | json}},
+      {% endfor %}
+
+      'products': __DL__products
+    };
+  
+if(__DL__.debug == true){
+
+/** DATALAYER: Transaction */
+if(document.location.pathname.match(/.*order.*/g)){
+dataLayer.push(transactionData,{
+    'page_type' :'Transaction',
+    'event'    :'Transaction'
+});       
+//console.log("Transaction Data"+" :"+JSON.stringify(transactionData, null, " "));
+}
+}
+        
+/** DATALAYER: Checkout */
+if(Shopify.Checkout){    
+ window.dataLayer = window.dataLayer || [];       
+  dataLayer.push ({   
+  'event':'dynamicRemarketingTriggered',
+  'google_tag_params': window.google_tag_params
+}); 
+if(Shopify.Checkout.step){ 
+if(Shopify.Checkout.step.length > 0){
+    if (Shopify.Checkout.step === 'contact_information'){
+           dataLayer.push({
+           'event'    :'begin_checkout',
+           'page_type' :'Customer Information',
+           'ecommerce' : __DL__products  
+          });
+            //console.log("Customer Information - Transaction Data"+" :"+JSON.stringify(transactionData, null, " "));
+        }else if (Shopify.Checkout.step === 'shipping_method'){
+           dataLayer.push({
+            'ecommerce' : __DL__products,
+            'event'    :'add_shipping_info',
+            'page_type' :'Shipping Information'
+            });
+           //console.log("Shipping - Transaction Data"+" :"+JSON.stringify(transactionData, null, " "));
+        }else if( Shopify.Checkout.step === "payment_method" ){
+          dataLayer.push({
+            'ecommerce' : __DL__products,
+            'event'    :'add_payment_info',
+            'page_type' :'Add Payment Info',
+          });
+                    //console.log("Payment - Transaction Data"+" :"+JSON.stringify(transactionData, null, " "));
+                }
+            }
+            
+            if(__DL__.debug == true){
+                /** DATALAYER: Transaction */
+                if(Shopify.Checkout.page == "thank_you"){
+                    dataLayer.push({
+                        'page_type' :'Transaction',
+                        'event'    :'transaction',
+                        'transaction_id' : '#{{ checkout.order_number | json }}',
+                       'affiliation' : {{ shop.name | json }},
+                       'ecommerce' : __DL__products,
+                    });       
+                    //console.log("Transaction Data"+" :"+JSON.stringify(transactionData, null, " "));  
+                }
+            }else{
+                /** DATALAYER: Transaction */
+                if(Shopify.Checkout.page == "thank_you"){
+                   window.dataLayer = window.dataLayer || [];       
+                    dataLayer.push({
+                        'page_type' :'Transaction',
+                        'event'    :'transaction',
+                       'transaction_id' : '#{{ checkout.order_number | json }}',
+                       'affiliation' : {{ shop.name | json }},
+                        'ecommerce' : __DL__products,
+                    });
+                }
+            }
+        }
+    }
+    
+    /** DATALAYER: All Pages 
+    * Fire all pages trigger after all additional dataLayers have loaded. */
+    
+    dataLayer.push({
+        'event': 'DataLayer Loaded'
+    });
+    
+    //console.log('DATALAYER: DataLayer Loaded.');
+    
+    /**********************
+    * DATALAYER EVENT BINDINGS
+    ***********************/
+    
+    
+</script>
